@@ -1,0 +1,265 @@
+@page "/dungeonsofdoom"
+
+<h3>Dungeons of Doom</h3>
+
+@if (isGameOver)
+{
+    <p>@currentMessage</p>
+    <p>Click to <a href="" @onclick="StartGame">play again</a>.</p>
+}
+else
+{
+    <div tabindex="0" style="font-family: monospace; outline: none;" @onkeydown="HandleKeyPress">
+        @for (int y = 0; y < world.GetLength(1); y++)
+        {
+            <div>
+                @for (int x = 0; x < world.GetLength(0); x++)
+                {
+                    <span>@GetRoomSymbol(x, y)</span>
+                }
+            </div>
+        }
+    </div>
+
+    <p>Health: @player.Health</p>
+    <p>Items: @string.Join(", ", player.Backpack.Select(item => item.Name))</p>
+
+ @if (!string.IsNullOrEmpty(currentImagePath))
+{
+    <img src="@currentImagePath" alt="Monster in the room" style="max-width: 25%; height: auto;" />
+}
+
+
+}
+
+<p>@currentMessage</p>
+
+@code 
+{
+    private Room[,] world = new Room[20, 5];
+    private Player player;
+    private bool isGameOver;
+    private bool ShowImage { get; set; } = false;
+    private string currentMessage = "Welcome to Dungeons of Doom!";
+
+    protected override void OnInitialized()
+    {
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        player = new Player(30, 0, 0);
+        CreateWorld();
+        isGameOver = false;
+        currentMessage = "Let the adventure begin!";
+        StateHasChanged();
+    }
+
+    private void CreateWorld()
+    {
+        world = new Room[20, 5];
+        string[] weapons = { "Sword", "Axe", "Bow", "Hagelbrakare" };
+        string[] monsterTypes = { "Skeleton", "Ghost", "Rabid Wolf", "Smirking Bearded Man", "Diablo" };
+        Random random = new Random();
+
+        for (int y = 0; y < world.GetLength(1); y++)
+        {
+            for (int x = 0; x < world.GetLength(0); x++)
+            {
+                world[x, y] = new Room();
+
+                int percentage = random.Next(1, 100);
+                if (percentage < 10)
+                {
+                    int weaponIndex = random.Next(weapons.Length);
+                    int monsterTypeIndex = random.Next(monsterTypes.Length);
+                    Item monsterItem = new Item(weapons[weaponIndex], "Weapon");
+                    world[x, y].MonsterInRoom = new Monster(monsterTypes[monsterTypeIndex], 30) { CarriedItem = monsterItem };
+                }
+                else if (percentage < 20)
+                {
+                    int weaponIndex = random.Next(weapons.Length);
+                    world[x, y].ItemInRoom = new Item(weapons[weaponIndex], "Weapon");
+                }
+            }
+        }
+    }
+
+    private string GetRoomSymbol(int x, int y)
+    {
+        if (player.X == x && player.Y == y) return "P";
+        else if (world[x, y].MonsterInRoom != null && world[x, y].MonsterInRoom.IsAlive) return "M";
+        else if (world[x, y].ItemInRoom != null) return "I";
+        else return ".";
+    }
+
+    private void HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (isGameOver) return;
+
+        int newX = player.X;
+        int newY = player.Y;
+        bool validMove = false;
+
+        switch (e.Key)
+        {
+            case "ArrowRight": newX++; validMove = true; break;
+            case "ArrowLeft": newX--; validMove = true; break;
+            case "ArrowUp": newY--; validMove = true; break;
+            case "ArrowDown": newY++; validMove = true; break;
+            case "q":
+            case "Q": GameOver(); return;
+        }
+
+        if (validMove && IsMoveValid(newX, newY))
+        {
+            MovePlayer(newX, newY);
+            EnterRoom();
+
+            if (player.HasEncounteredSkeleton)
+            {
+                ShowImage = false;
+
+                MovePlayer(newX, newY);
+                EnterRoom();
+                StateHasChanged();
+            }
+        }
+    }
+
+    private bool IsMoveValid(int x, int y)
+    {
+        return (x >= 0 && x < world.GetLength(0)) && (y >= 0 && y < world.GetLength(1));
+    }
+
+    private void MovePlayer(int newX, int newY)
+    {
+        player.X = newX;
+        player.Y = newY;
+        StateHasChanged();
+    }
+
+    private string currentImagePath; // Lägg till denna medlemsvariabel i din klass
+
+    private void EnterRoom()
+    {
+        var room = world[player.X, player.Y];
+        if (room.MonsterInRoom != null && room.MonsterInRoom.IsAlive)
+        {
+            currentMessage = $"You encounter a {room.MonsterInRoom.Name}!";
+            switch (room.MonsterInRoom.Name)
+            {
+                case "Skeleton":
+                    currentImagePath = "/images/skeleton.png";
+                    player.HasEncounteredSkeleton = true;
+                    break;
+                case "Diablo":
+                    currentImagePath = "/images/diablo.png";
+                    player.HasEncounteredDiablo = true;
+                    break;
+                case "Ghost":
+                    currentImagePath = "/images/ghost.png";
+                    player.HasEncounteredGhost = true;
+                    break;
+                case "Rabid Wolf":
+                    currentImagePath = "/images/wolf.png";
+                    player.HasEncounteredWolf = true;
+                    break;
+                case "Smirking Bearded Man":
+                    currentImagePath = "/images/smirk.png";
+                    player.HasEncounteredBeardedMan = true;
+                    break;
+                default:
+                    currentImagePath = null;
+                    break;
+            }
+        }
+        else
+        {
+            currentImagePath = null;
+        }
+
+        
+        if (room.ItemInRoom != null)
+        {
+            player.Backpack.Add(room.ItemInRoom);
+            room.ItemInRoom = null;
+            currentMessage = $"You found a {player.Backpack.Last().Name}!";
+        }
+
+        StateHasChanged();
+    }
+
+
+    private void GameOver()
+    {
+        isGameOver = true;
+        currentMessage = "Game over...";
+        StateHasChanged();
+    }
+
+
+    public class Player
+    {
+
+        public int Health { get; set; }
+        public bool IsAlive => Health > 0;
+        public int X { get; set; }
+        public int Y { get; set; }
+        public List<Item> Backpack { get; set; }
+        public bool HasEncounteredSkeleton { get; set; } = false;
+        public bool HasEncounteredDiablo { get; set; } = false;
+        public bool HasEncounteredGhost{ get; set; } = false;
+        public bool HasEncounteredWolf { get; set; } = false;
+        public bool HasEncounteredBeardedMan { get; set; } = false;
+        public bool HasEncounteredd { get; set; } = false;
+
+        public Player(int health, int x, int y, List<Item> backpack = null)
+        {
+            Health = health;
+            X = x;
+            Y = y;
+            Backpack = backpack ?? new List<Item>();
+        }
+    }
+
+    public bool DefeatMonster(Monster monster)
+    {
+        return true;
+    }
+
+
+    public class Monster
+    {
+        public string Name { get; set; }
+        public int Health { get; set; }
+        public Item CarriedItem { get; set; }
+        public bool IsAlive => Health > 0;
+
+        public Monster(string name, int health)
+        {
+            Name = name;
+            Health = health;
+        }
+    }
+
+    public class Room
+    {
+        public Monster MonsterInRoom { get; set; }
+        public Item ItemInRoom { get; set; }
+    }
+
+    public class Item
+    {
+        public string Name { get; set; }
+        public string ItemType { get; set; }
+
+        public Item(string name, string itemType)
+        {
+            Name = name;
+            ItemType = itemType;
+        }
+    }
+
+}
